@@ -1,0 +1,256 @@
+---
+title: "Practice_Modeling"
+author: "JeongMin Park"
+date: '2020 6 27 '
+output: html_document
+---
+
+
+### 데이터 불러오기
+```{r, message=FALSE, warning=FALSE}
+setwd('C:/Users/jeong/Desktop/데이터마이닝')
+bank <- read.csv('bank.csv', header = T, sep=';')
+head(bank)
+summary(bank)
+dim(bank)
+
+```
+
+### EDA
+
+#### Numerical variables
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=4}
+library(ggplot2)
+# age
+ggplot(bank, aes(age, group=y, col=y)) + 
+        geom_density(lwd=1) + theme_bw()
+# job
+bank$y_f <- factor(bank$y, levels = c('yes', 'no'))
+ggplot(bank, aes(job, group=y_f)) + 
+        geom_bar(aes(y=..prop.., fill=as.factor(..x..))) + 
+        theme_bw() + facet_grid(.~y_f) +
+        theme(axis.text = element_text(angle = 30, vjust = 0, hjust = 0.5),
+              legend.position = 'none')
+
+library(tidyverse)
+bank_t <- bank %>% group_by(y, job) %>% summarise(cnt=n()) %>% 
+        arrange(desc(cnt)) %>% mutate(r=row_number()) %>% 
+        ungroup() %>% group_by(y) %>% mutate(total=sum(cnt)) %>% 
+        mutate(p=cnt/total) %>% top_n(5)
+bank_t$y_f <- factor(bank_t$y, levels = c('yes', 'no'))
+bank_t
+ggplot(bank_t, aes(r, p, fill=job)) + geom_bar(stat = 'identity') +
+        theme_bw() + facet_grid(~y_f) +
+        scale_x_continuous(labels = NULL, breaks = NULL) +
+        labs(title = 'Top5 jobs according to y',
+             x = '', y = 'prop')
+
+# duration
+ggplot(bank, aes(duration, group=y, col=y)) + 
+        geom_density(lwd=1) + theme_bw()
+
+# campaign
+ggplot(bank, aes(campaign, group=y, col=y)) + 
+        geom_density(lwd=1) + theme_bw()
+
+# day
+ggplot(bank, aes(day, group=y, col=y)) + 
+        geom_density(lwd=1) + theme_bw()
+ggplot(bank, aes(day, y=..density..)) +
+        geom_histogram(aes(group=y), binwidth = 1, alpha = 0.6, fill='gold') +
+        geom_density(color='indianred', lwd=1) +
+        theme_bw() +
+        facet_grid(~y)
+```
+
+
+#### Categorical variables
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=4}
+my_plot <- function(my_data=bank, my_var, my_title=''){
+        ggplot(my_data, aes(my_var, group=y_f)) +
+                geom_bar(aes(y=..prop.., fill=factor(..x..))) + 
+                theme_bw() +
+                facet_grid(~y_f) +
+                labs(title = my_title, x = NULL, fill = my_title) +
+                theme(axis.text.x = element_text(size = 10))
+}
+
+# job
+my_plot(bank, bank$job, 'Job') + 
+        theme(axis.text.x = element_text(angle = 30, hjust = 1),
+              legend.position = 'none')
+
+# marital
+my_plot(bank, bank$marital, 'Marital')
+
+# education
+my_plot(bank, bank$education, 'Education')+ 
+        theme(axis.text.x = element_text(angle = 30, hjust = 1),
+              legend.position = 'none')
+
+# default
+my_plot(bank, bank$default, 'Default')
+
+# housing
+my_plot(bank, bank$housing, 'Housing')
+
+# loan
+my_plot(bank, bank$loan, 'Loan')
+
+# contact
+my_plot(bank, bank$contact, 'Contact')
+
+# month
+bank$month_f <- factor(bank$month, levels = c('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                                                'jul', 'aug', 'sep', 'oct', 'nov', 'dec'))
+my_plot(bank, bank$month_f, 'Month') +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+# poutcome
+my_plot(bank, bank$poutcome, 'P_Outcome') + 
+        theme(axis.text.x = element_text(angle = 30, hjust = 1),
+              legend.position = 'none')
+bank_t <- bank %>% filter(poutcome!='unknown')
+my_plot(bank_t, bank_t$poutcome, "P_Outcome without 'unknown'") +
+        theme(legend.position = 'none')
+
+# y
+ggplot(bank, aes(y_f)) +
+        geom_bar(aes(fill=y_f)) +
+        theme_bw()
+```
+
+
+### SPLIT DATA (Training/Test)
+```{r, message=FALSE, warning=FALSE}
+# train data / test data
+train_idx <- sample(nrow(bank), as.integer(nrow(bank)*0.8))
+train <- bank[train_idx,-18]  # 80%
+test <- bank[-train_idx,-18]  # 20%
+dim(train); dim(test)
+```
+
+
+### MODELING
+
+#### Logistic modeling
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=4}
+logis1 <- glm(y~., data = train, family = 'binomial')
+summary(logis1)
+logis_step <- step(logis1, trace = 0)
+summary(logis_step)
+logis_train_fit <- predict(logis_step, type = 'response')
+logis_train_fit <- ifelse(logis_train_fit>0.5, 1, 0)
+logis_train_table <- table(logis_train_fit, train$y)
+logis_train_table
+logis_train_acc <- sum(diag(logis_train_table))/nrow(train)
+logis_train_acc
+logis_test_fit <- predict.glm(logis_step, newdata = test, type = 'response')
+logis_test_fit <- ifelse(logis_test_fit>0.5, 1, 0)
+logis_test_table <- table(logis_test_fit, test$y)
+logis_test_table
+logis_test_acc <- sum(diag(logis_test_table))/nrow(test)
+logis_test_acc
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=7, fig.height=6}
+library(ROCR)
+logis_train_fit <- predict(logis_step, type = 'response')
+pred <- prediction(logis_train_fit, train$y)
+roc <- performance(pred, 'tpr', 'fpr')
+plot(roc, main = 'ROC Curve of train and test data', col=4, lwd=2)
+
+logis_test_fit <- predict.glm(logis_step, newdata = test, type = 'response')
+pred <- prediction(logis_test_fit, test$y)
+roc <- performance(pred, 'tpr', 'fpr')
+plot(roc, add=T, col=2, lwd=2)
+legend(x=0.7, y=0.2, c('train data', 'test data'),
+       col=c(4, 2), lty=c(1,1), lwd=c(2,2))
+
+```
+
+
+#### Tree
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=5}
+library(tree)
+tree1 <- tree(y~., data = train)
+summary(tree1)
+tree1
+plot(tree1)
+text(tree1, pretty = 0)
+tree_train_fit <- predict(tree1, train, type = 'class')
+tree_train_table <- table(tree_train_fit, train$y)
+tree_train_table
+tree_train_acc <- sum(diag(tree_train_table))/nrow(train)
+tree_train_acc
+tree_test_fit <- predict(tree1, test, type = 'class')
+tree_test_table <- table(tree_test_fit, test$y)
+tree_test_table
+tree_test_acc <- sum(diag(tree_test_table))/nrow(test)
+tree_test_acc
+```
+
+
+#### CV Tree
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=5}
+# cv.tree
+cv_tree1 <- cv.tree(tree1)
+names(cv_tree1)
+plot(cv_tree1)
+
+cv_tree1$size[which.min(cv_tree1$dev)]
+prune.cv_tree <- prune.tree(tree1, best = 8)
+plot(prune.cv_tree)
+text(prune.cv_tree, pretty = 0)
+
+prune_train_fit <- predict(prune.cv_tree, train, type = 'class')
+prune_train_table <- table(prune_train_fit, train$y)
+prune_train_table
+prune_train_acc <- sum(diag(prune_train_table))/nrow(train)
+prune_train_acc
+prune_test_fit <- predict(prune.cv_tree, test, type = 'class')
+prune_test_table <- table(prune_test_fit, test$y)
+prune_test_table
+prune_test_acc <- sum(diag(prune_test_table))/nrow(test)
+prune_test_acc
+```
+
+
+#### RandomForest
+```{r, message=FALSE, warning=FALSE, fig.align='center', fig.width=8, fig.height=4}
+library(randomForest)
+rf1 <- randomForest(y~., data = train, importance=TRUE)
+rf1
+varImpPlot(rf1)
+importance(rf1)
+
+rf_train_table <- rf1$confusion
+rf_train_table
+rf_train_acc <- sum(diag(rf_train_table))/nrow(train)
+rf_train_acc
+rf_test_fit <- predict(rf1, newdata = test)
+rf_test_table <- table(rf_test_fit, test$y)
+rf_test_table
+rf_test_acc <- sum(diag(rf_test_table))/nrow(test)
+rf_test_acc
+```
+
+
+### Compare Results
+```{r, message=FALSE, warning=FALSE}
+data.frame('model'=c('logistic', 'tree', 'pruning', 'randomforest'),
+           'train accuracy'=round(c(logis_train_acc, tree_train_acc, prune_train_acc, rf_train_acc)*100,2),
+           'test accuracy'=round(c(logis_test_acc, tree_test_acc, prune_test_acc, rf_test_acc)*100,2)) 
+```
+
+
+
+
+
+
+
+
+
+```
